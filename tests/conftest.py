@@ -10,6 +10,7 @@ from locuspocus.Fasta import Chromosome
 
 @pytest.fixture(scope='module')
 def simpleRefLoci():
+    m80tools.delete('RefLoci','simpleRefLoci',force=True)
     # Create a Locus
     a = Locus(1,100,150, id='gene_a')
     # Create a couple more!
@@ -25,6 +26,7 @@ def simpleRefLoci():
 @pytest.fixture(scope="module")
 def testRefGen():
     # We have to build it
+    m80tools.delete('RefLoci','Zm5bFGS',force=True)
     gff = os.path.expanduser(
         os.path.join(
             'raw', 'ZmB73_5b_FGS.gff.gz'
@@ -46,7 +48,7 @@ def m80_Fasta():
         the m80 API
     '''
     # delete the onl
-    m80tools.delete('ACGT','Fasta',force=True)
+    m80tools.delete('Fasta','ACGT',force=True)
     f = Fasta.from_file('ACGT','raw/ACGT.fasta')
     return True
 
@@ -54,7 +56,7 @@ def m80_Fasta():
 @pytest.fixture(scope='module')                                                               
 def smpl_fasta():                                                                  
     ''' A simple fasta that agrees with smpl_annot'''                           
-    m80tools.delete('smpl_fasta','Fasta',force=True)
+    m80tools.delete('Fasta','smpl_fasta',force=True)
     fasta = Fasta('smpl_fasta')                                                             
     chr1 = Chromosome('chr1','A'*500000)                                                  
     chr2 = Chromosome('chr2','C'*500000)                                               

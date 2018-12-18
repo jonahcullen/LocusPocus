@@ -5,10 +5,12 @@ from itertools import chain
 import hashlib
 import re
 import pandas as pd
+import numpy as np
 
 class Locus(object):
-    def __init__(self, chrom, start, end=None, 
-                 id=None, window=0, sub_loci=None, **kwargs):
+    def __init__(self, chrom, start, end=None, id=None,
+                 score=None, strand=None, frame=None, source=None,
+                 feature_type=None, window=0, sub_loci=None, **kwargs):
         '''
             A genetic coordinate class.
 
@@ -20,27 +22,34 @@ class Locus(object):
             |----------=========---------|
             ^          ^       ^         ^
              \          \       \         \
-              Upstream   start   end       downstream  
+              Upstream   start   end       downstream
 
         '''
-        # Intelligently assign an ID, which is not required 
+        # Intelligently assign an ID, which is not required
         if id is None or id.startswith('<None>') or id == '.':
             self._id = None
         else:
             self._id = id
         # Chromosomes are strings
         self.chrom = str(chrom)
+        self._feature_type = str(feature_type) if feature_type is not None else 'LocusPocus'
         # Postitions are integers
         self._start = int(start)
         self._end = int(end) if end is not None else int(start)
-       
+
+        # Add GFF specific fields
+        self.strand = strand
+        self._score = score
+        self._frame = frame
+        self.source = source
+
         # Implement an optional window around the start and stop
-        # This is used to collapse SNPs and to perform the 
+        # This is used to collapse SNPs and to perform the
         # upstream and downstream methods
         self.window = int(window)
         # Keep a dictionary for special locus attributes
         self.attr = kwargs
-        
+
         # Loci can also have sub loci (for exons, snps, etc)
         self.sub_loci = set(sub_loci) if sub_loci is not None else set()
         if len(self.sub_loci) == 0:
@@ -68,7 +77,13 @@ class Locus(object):
             'id'    : self.id,
             'chrom' : self.chrom,
             'start' : self.start,
-            'end'   : self.end
+            'end'   : self.end,
+            'feature_type': self.feature_type,
+            'strand' : self.strand,
+            'score' : self.score,
+            'frame' : self.frame,
+            'source': self.source,
+            'window': self.window
         }
         a_dict.update(self.attr)
         return a_dict
@@ -111,45 +126,13 @@ class Locus(object):
         return self
 
 
-    def as_record(self):
-        '''
-            Returns the Locus as a record. 
-            NOTE: does not include Locus attributes. See Locus.as_dict()
-
-            Parameters
-            ----------
-            None
-
-            Returns
-            -------
-            A tuple containing Locus information
-        '''
-        return (self.chrom,self.start,self.end,self.name,self.window,self.id)
-
-    @classmethod
-    def from_record(cls,tpl):
-        '''
-            Creates a Locus object from a record.
-
-            Parameters
-            ----------
-            record : tuple
-                Tuple containing Locus information.
-            
-            Returns
-            -------
-            Locus object
-
-        '''
-        return cls(*tpl)
-
     def __setitem__(self,key,val):
         '''
             Set a Locus attribute.
 
             Parameters
             ----------
-            key : str 
+            key : str
                 Attribute name.
             val : object
                 Attribute value.
@@ -168,16 +151,16 @@ class Locus(object):
             ----------
             key : str
                 Attribute name.
-            
+
             Returns
             -------
             val : object
                 Attribute value.
         '''
-        return self.attr[key]
+        return self.attr[str(key)]
 
     def default_getitem(self,key,default=None):
-        ''' 
+        '''
             Return a default value if the attr[key] value is None
 
             Parameters
@@ -187,7 +170,7 @@ class Locus(object):
             default : str (default: None)
                 A default value to return if the key is not present
                 in the Locus attribute table.
-                
+
             Returns
             -------
             val : object
@@ -209,10 +192,33 @@ class Locus(object):
 
             Returns
             -------
-            The Locus start position. 
+            The Locus start position.
             NOTE: the minimum return value is 0
         '''
         return max(0,int(self._start))
+
+
+    @property
+    def score(self):
+        '''
+            Return the score of the locus
+        '''
+        if self._score == '.' or self._score is None:
+            return np.nan
+        else:
+            return float(self._score)
+
+
+    @property
+    def frame(self):
+        '''
+            Return the frame
+        '''
+        if self._frame is None:
+            return None
+        else:
+            return int(self._frame)
+
 
     @property
     def end(self):
@@ -232,9 +238,9 @@ class Locus(object):
 
     @property
     def coor(self):
-        ''' 
+        '''
             Returns Locus start and stop positions
-        
+
             Parameters
             ----------
             None
@@ -245,6 +251,21 @@ class Locus(object):
 
         '''
         return (self.start,self.end)
+
+    @property
+    def feature_type(self):
+        '''
+            Returns the feature type of the locus object
+
+            Parameters
+            ----------
+            None
+
+            Returns
+            -------
+            A string representing the feature type (gene, transposable element, snp, etc.)
+        '''
+        return str(self._feature_type)
 
     @property
     def upstream(self):
@@ -333,11 +354,11 @@ class Locus(object):
 
 
     def __add__(self,locus):
-        ''' 
+        '''
             Collapse two loci into a new 'meta' locus. The start is the min
             between the two loci and the window extends within as well as 1/2
             upstream and downstream of the original window sizes
-            
+
             e.g. Locus(1,10,20) + Locus(1,30,40)
 
             Parameters
@@ -346,7 +367,7 @@ class Locus(object):
 
             Returns
             -------
-            a **new** Locus object containing the original loci as 
+            a **new** Locus object containing the original loci as
             sub-loci
 
         '''
@@ -408,11 +429,11 @@ class Locus(object):
             bool
         '''
         if (locus.chrom == self.chrom
-           and self.upstream >= locus.upstream 
+           and self.upstream >= locus.upstream
            and self.downstream <= locus.downstream):
             return True
         else:
-            return False 
+            return False
 
     def encloses(self,locus):
         '''
@@ -426,18 +447,18 @@ class Locus(object):
             y:      |----===----|
         '''
         if (locus.chrom == self.chrom
-           and locus.upstream >= self.upstream 
+           and locus.upstream >= self.upstream
            and locus.downstream <= self.downstream):
             return True
         else:
-            return False 
+            return False
 
     def __contains__(self,locus):
         '''
             Test if a locus is within another locus, i.e. overlapping.
-            NOTE: this function includes the locus **window** in the 
+            NOTE: this function includes the locus **window** in the
                   calculation, the loci do not need to properly overlap,
-                  however this case can be coverered by setting the 
+                  however this case can be coverered by setting the
                   locus window to 0.
 
             Parameters
@@ -446,7 +467,7 @@ class Locus(object):
 
             Returns
             -------
-            bool : True or False 
+            bool : True or False
 
         '''
         if (locus.chrom == self.chrom and
@@ -471,18 +492,18 @@ class Locus(object):
 
 
     def __len__(self):
-        ''' 
-            Return the inclusive length of locus 
+        '''
+            Return the inclusive length of locus
 
             Returns
             -------
-            The length of the locus (plus 1 bp)
-            
+            The length of the locus
+
         '''
         if self.start == self.end:
             return 1
         else:
-            return self.end - self.start
+            return self.end - self.start + 1
 
     # XXX I checked the python doc and this method should never be called because
     # the rich comparison operators are defined (i.e. __eq__, __lt__, __gt__)
@@ -516,7 +537,7 @@ class Locus(object):
 
             Returns
             -------
-            bool 
+            bool
         '''
         if self.chrom == locus.chrom:
             if self.start == locus.start:
@@ -579,6 +600,7 @@ class Locus(object):
         )
 
     def summary(self):
+        # TODO: add the rest of the properties 
         '''
             Return summary information about a locus
 
@@ -596,19 +618,22 @@ class Locus(object):
             'Start Position: {}',
             'End Position: {}',
             'Window Size: {}',
+            'Feature Type: {}',
             'Additional attributes: {}',
             'Sub Loci: {}'
         ]).format(
             self._id, self.chrom,
             self.start, self.end,
-            self.window, len(self.attr),
+            self.window,
+            self.feature_type, len(self.attr),
             len(self.sub_loci)
         )
 
     def __repr__(self):
         '''
-           A convenience method for iPython 
+           A convenience method for iPython
         '''
+        # TODO: return an actual evalable string
         return str(self)
 
     def __hash__(self):
@@ -618,7 +643,7 @@ class Locus(object):
             Parameters
             ----------
             None
-    
+
             Returns
             -------
             str : md5 hash of locus
